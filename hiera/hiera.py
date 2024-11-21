@@ -25,6 +25,7 @@ from typing import List, Tuple, Callable, Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from timm.models.layers import DropPath, Mlp
 
@@ -97,7 +98,10 @@ class MaskUnitAttention(nn.Module):
 
         if hasattr(F, "scaled_dot_product_attention"):
             # Note: the original paper did *not* use SDPA, it's a free boost!
-            x = F.scaled_dot_product_attention(q, k, v)
+            with sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION]):
+            # with sdpa_kernel(SDPBackend.MATH):
+            # with sdpa_kernel(SDPBackend.EFFICIENT_ATTENTION):
+                x = F.scaled_dot_product_attention(q, k, v)
         else:
             attn = (q * self.scale) @ k.transpose(-1, -2)
             attn = attn.softmax(dim=-1)
