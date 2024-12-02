@@ -31,6 +31,7 @@ from timm.models.layers import DropPath, Mlp
 from .hiera_utils import pretrained_model, conv_nd, do_pool, do_masked_conv, Unroll, Reroll
 from .hfhub import has_config, PyTorchModelHubMixin
 
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 class MaskUnitAttention(nn.Module):
     """
@@ -84,7 +85,7 @@ class MaskUnitAttention(nn.Module):
             self.qkv(x)
             .reshape(B, -1, num_windows, 3, self.heads, self.head_dim)
             .permute(3, 0, 4, 2, 1, 5)
-        )
+        )#.type(torch.float16)
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         if self.q_stride > 1:
@@ -97,7 +98,10 @@ class MaskUnitAttention(nn.Module):
 
         if hasattr(F, "scaled_dot_product_attention"):
             # Note: the original paper did *not* use SDPA, it's a free boost!
-            x = F.scaled_dot_product_attention(q, k, v)
+            with sdpa_kernel(SDPBackend.MATH):
+                # print(q.dtype)
+                # print(q.shape)
+                x = F.scaled_dot_product_attention(q, k, v)
         else:
             attn = (q * self.scale) @ k.transpose(-1, -2)
             attn = attn.softmax(dim=-1)
